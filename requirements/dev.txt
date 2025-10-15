@@ -1,0 +1,13 @@
+-r base.txt
+
+# Development Tools
+ipython>=8.14.0
+jupyter>=1.0.0
+jupyterlab>=4.0.5
+
+# Load Testing
+locust>=2.15.1
+
+# Profiling
+memory-profiler>=0.61.0
+line-profiler>=4.0.3

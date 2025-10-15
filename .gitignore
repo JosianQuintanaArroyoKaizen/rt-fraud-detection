@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+rt-anomaly-detection/
+venv/
+env/
+ENV/
+.venv
+
+# AWS
+.aws/
+*.pem
+
+# Data
+data/
+*.csv
+*.parquet
+*.json
+outputs/
+
+# Models
+models/
+*.pkl
+*.joblib
+*.h5
+*.pt
+*.pth
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# MLflow
+mlruns/
+mlartifacts/
+
+# Terraform/CloudFormation
+*.tfstate
+*.tfstate.backup
+.terraform/
