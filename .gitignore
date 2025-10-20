@@ -5,6 +5,7 @@ __pycache__/
 *.so
 .Python
 rt-anomaly-detection/
+rt-anomaly-detection.old/
 venv/
 env/
 ENV/
