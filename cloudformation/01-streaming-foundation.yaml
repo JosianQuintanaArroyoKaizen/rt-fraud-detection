@@ -1,0 +1,238 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Real-Time Fraud Detection - Streaming Foundation (Kinesis + S3)'
+
+Parameters:
+  Environment:
+    Type: String
+    Description: Environment name
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Default: dev
+  
+  ProjectName:
+    Type: String
+    Description: Project name for resource naming
+    Default: rtfd
+  
+  UniqueSuffix:
+    Type: String
+    Description: Unique suffix for resource names
+    MinLength: 6
+    MaxLength: 8
+  
+  KinesisShardCount:
+    Type: Number
+    Description: Number of Kinesis shards
+    Default: 3
+    MinValue: 1
+    MaxValue: 10
+  
+  KinesisRetentionHours:
+    Type: Number
+    Description: Kinesis data retention in hours
+    Default: 24
+    MinValue: 24
+    MaxValue: 168
+
+Resources:
+  
+  # S3 Bucket for Data Storage
+  DataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${Environment}-${ProjectName}-data-${UniqueSuffix}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 30
+          - Id: TransitionToIA
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 30
+                StorageClass: STANDARD_IA
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ManagedBy
+          Value: CloudFormation
+  
+  # Kinesis Data Stream
+  TransactionStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      Name: !Sub '${Environment}-${ProjectName}-transactions-${UniqueSuffix}'
+      ShardCount: !Ref KinesisShardCount
+      RetentionPeriodHours: !Ref KinesisRetentionHours
+      StreamEncryption:
+        EncryptionType: KMS
+        KeyId: alias/aws/kinesis
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ManagedBy
+          Value: CloudFormation
+  
+  # IAM Role for Lambda Producer
+  ProducerLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${Environment}-${ProjectName}-producer-role-${UniqueSuffix}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: KinesisProducerPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - kinesis:PutRecord
+                  - kinesis:PutRecords
+                  - kinesis:DescribeStream
+                Resource: !GetAtt TransactionStream.Arn
+        - PolicyName: S3ReadPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt DataBucket.Arn
+                  - !Sub '${DataBucket.Arn}/*'
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+  
+  # IAM Role for Lambda Consumer (will create Lambda next step)
+  ConsumerLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${Environment}-${ProjectName}-consumer-role-${UniqueSuffix}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: KinesisConsumerPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - kinesis:GetRecords
+                  - kinesis:GetShardIterator
+                  - kinesis:DescribeStream
+                  - kinesis:ListStreams
+                  - kinesis:ListShards
+                Resource: !GetAtt TransactionStream.Arn
+        - PolicyName: S3WritePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource: !Sub '${DataBucket.Arn}/*'
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+  
+  # CloudWatch Log Group for Producer
+  ProducerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${Environment}-${ProjectName}-producer-${UniqueSuffix}'
+      RetentionInDays: 7
+  
+  # CloudWatch Log Group for Consumer
+  ConsumerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${Environment}-${ProjectName}-consumer-${UniqueSuffix}'
+      RetentionInDays: 7
+
+Outputs:
+  DataBucketName:
+    Description: S3 bucket for data storage
+    Value: !Ref DataBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-DataBucket'
+  
+  DataBucketArn:
+    Description: S3 bucket ARN
+    Value: !GetAtt DataBucket.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-DataBucketArn'
+  
+  TransactionStreamName:
+    Description: Kinesis stream name
+    Value: !Ref TransactionStream
+    Export:
+      Name: !Sub '${AWS::StackName}-TransactionStream'
+  
+  TransactionStreamArn:
+    Description: Kinesis stream ARN
+    Value: !GetAtt TransactionStream.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-TransactionStreamArn'
+  
+  ProducerLambdaRoleArn:
+    Description: IAM role for producer Lambda
+    Value: !GetAtt ProducerLambdaRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-ProducerRole'
+  
+  ConsumerLambdaRoleArn:
+    Description: IAM role for consumer Lambda
+    Value: !GetAtt ConsumerLambdaRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-ConsumerRole'
+  
+  Environment:
+    Description: Environment name
+    Value: !Ref Environment
+    Export:
+      Name: !Sub '${AWS::StackName}-Environment'
+  
+  UniqueSuffix:
+    Description: Unique suffix for resources
+    Value: !Ref UniqueSuffix
+    Export:
+      Name: !Sub '${AWS::StackName}-UniqueSuffix'

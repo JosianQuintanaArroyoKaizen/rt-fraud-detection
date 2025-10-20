@@ -1,0 +1,15 @@
+# Development Environment Parameters
+Parameters:
+  Environment: dev
+  ProjectName: rtfd
+  
+  # Kinesis Configuration
+  KinesisShardCount: 3
+  KinesisRetentionHours: 24
+  
+  # S3 Configuration
+  DataBucketRetentionDays: 30
+  
+  # Tagging
+  CostCenter: development
+  Owner: Josian Quintana-Arroyo
