@@ -1,0 +1,77 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Real-Time Fraud Detection - Lambda Consumer'
+
+Parameters:
+  Environment:
+    Type: String
+    Description: Environment name
+    Default: dev
+  
+  FoundationStackName:
+    Type: String
+    Description: Name of the foundation stack
+    Default: dev-rtfd-streaming-foundation
+
+Resources:
+  
+  ConsumerLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 
+        - '${Env}-rtfd-consumer-${Suffix}'
+        - Env: !Ref Environment
+          Suffix: 
+            Fn::ImportValue: !Sub '${FoundationStackName}-UniqueSuffix'
+      Runtime: python3.12
+      Handler: lambda_function.lambda_handler
+      Role: 
+        Fn::ImportValue: !Sub '${FoundationStackName}-ConsumerRole'
+      Timeout: 60
+      MemorySize: 512
+      Environment:
+        Variables:
+          DATA_BUCKET:
+            Fn::ImportValue: !Sub '${FoundationStackName}-DataBucket'
+          OUTPUT_PREFIX: 'processed'
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+              return {'statusCode': 200, 'body': 'Placeholder'}
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: rtfd
+        - Key: ManagedBy
+          Value: CloudFormation
+  
+  KinesisEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn:
+        Fn::ImportValue: !Sub '${FoundationStackName}-TransactionStreamArn'
+      FunctionName: !Ref ConsumerLambdaFunction
+      StartingPosition: LATEST
+      BatchSize: 100
+      MaximumBatchingWindowInSeconds: 5
+      ParallelizationFactor: 1
+      Enabled: true
+
+Outputs:
+  ConsumerLambdaArn:
+    Description: Consumer Lambda ARN
+    Value: !GetAtt ConsumerLambdaFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-ConsumerLambdaArn'
+  
+  ConsumerLambdaName:
+    Description: Consumer Lambda function name
+    Value: !Ref ConsumerLambdaFunction
+    Export:
+      Name: !Sub '${AWS::StackName}-ConsumerLambdaName'
+  
+  EventSourceMappingId:
+    Description: Kinesis event source mapping ID
+    Value: !Ref KinesisEventSourceMapping
+    Export:
+      Name: !Sub '${AWS::StackName}-EventSourceMappingId'
